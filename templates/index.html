@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPLB Visualization</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .input-section {
+            display: flex;
+            gap: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, button {
+            padding: 8px;
+        }
+        .weight-inputs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .weight-input {
+            width: 60px;
+        }
+        .visualization {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .node {
+            border: 2px solid #333;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .gpus {
+            display: flex;
+            gap: 10px;
+        }
+        .gpu {
+            border: 1px solid #666;
+            padding: 10px;
+            flex: 1;
+        }
+        .expert {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+            text-align: center;
+        }
+        .add-layer-btn {
+            margin-top: 10px;
+        }
+        .layer-container {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .nodes-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .node {
+            flex: 1;
+        }
+        .gpu {
+            background-color: #f0f8ff;
+        }
+        .gpu-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .gpu-load {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .expert-pair {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+        .expert-pair .expert {
+            flex: 1;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Expert Parallelism Load Balancer Visualization</h1>
+    
+    <div class="container">
+        <div class="input-section">
+            <div>
+                <div class="form-group">
+                    <label for="num_replicas">Number of Replicas:</label>
+                    <input type="number" id="num_replicas" value="16" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="num_groups">Number of Expert Groups:</label>
+                    <input type="number" id="num_groups" value="4" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="num_nodes">Number of Nodes:</label>
+                    <input type="number" id="num_nodes" value="2" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="num_gpus">Number of GPUs:</label>
+                    <input type="number" id="num_gpus" value="8" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="num_experts">Number of Experts per Layer:</label>
+                    <input type="number" id="num_experts" value="12" min="1">
+                </div>
+            </div>
+            
+            <div>
+                <h3>Expert Weights</h3>
+                <div id="layers-container">
+                    <div class="layer-container" data-layer="0">
+                        <h4>Layer 1</h4>
+                        <div class="weight-inputs" id="weights-0"></div>
+                    </div>
+                </div>
+                <button class="add-layer-btn" onclick="addLayer()">Add Layer</button>
+            </div>
+        </div>
+        
+        <button onclick="calculateAllocation()">Calculate Allocation</button>
+        
+        <div class="visualization" id="visualization">
+            //visualization
+        </div>
+    </div>
+
+    <script>
+        let currentLayers = 1;
+        
+        function initializeWeightInputs() {
+            const numExperts = parseInt(document.getElementById('num_experts').value);
+            
+            for (let layer = 0; layer < currentLayers; layer++) {
+                const weightsContainer = document.getElementById(`weights-${layer}`);
+                weightsContainer.innerHTML = '';
+                
+                for (let i = 0; i < numExperts; i++) {
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.className = 'weight-input';
+                    input.value = Math.floor(Math.random() * 200) + 1; 
+                    input.min = 1;
+                    weightsContainer.appendChild(input);
+                }
+            }
+        }
+        
+        function addLayer() {
+            currentLayers++;
+            const layersContainer = document.getElementById('layers-container');
+            
+            const layerDiv = document.createElement('div');
+            layerDiv.className = 'layer-container';
+            layerDiv.dataset.layer = currentLayers - 1;
+            
+            layerDiv.innerHTML = `
+                <h4>Layer ${currentLayers}</h4>
+                <div class="weight-inputs" id="weights-${currentLayers - 1}"></div>
+            `;
+            
+            layersContainer.appendChild(layerDiv);
+            
+            const numExperts = parseInt(document.getElementById('num_experts').value);
+            const weightsContainer = document.getElementById(`weights-${currentLayers - 1}`);
+            
+            for (let i = 0; i < numExperts; i++) {
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'weight-input';
+                input.value = Math.floor(Math.random() * 200) + 1; 
+                input.min = 1;
+                weightsContainer.appendChild(input);
+            }
+        }
+        
+        function getWeights() {
+            const weights = [];
+            
+            for (let layer = 0; layer < currentLayers; layer++) {
+                const layerWeights = [];
+                const inputs = document.querySelectorAll(`#weights-${layer} input`);
+                
+                inputs.forEach(input => {
+                    layerWeights.push(parseInt(input.value));
+                });
+                
+                weights.push(layerWeights);
+            }
+            
+            return weights;
+        }
+        
+        function calculateAllocation() {
+            const weights = getWeights();
+            const numReplicas = parseInt(document.getElementById('num_replicas').value);
+            const numGroups = parseInt(document.getElementById('num_groups').value);
+            const numNodes = parseInt(document.getElementById('num_nodes').value);
+            const numGpus = parseInt(document.getElementById('num_gpus').value);
+            
+            fetch('/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    weights: weights,
+                    num_replicas: numReplicas,
+                    num_groups: numGroups,
+                    num_nodes: numNodes,
+                    num_gpus: numGpus
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                renderVisualization(data, weights);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        function getRandomColor(id) {
+            const hue = (id * 137.5) % 360;
+            return `hsl(${hue}, 70%, 80%)`;
+        }
+        
+        function renderVisualization(data, weights) {
+            const visualization = document.getElementById('visualization');
+            visualization.innerHTML = '';
+            
+            const phy2log = data.phy2log;
+            const numNodes = data.num_nodes;
+            const gpusPerNode = data.gpus_per_node;
+            
+            for (let layer = 0; layer < phy2log.length; layer++) {
+                const layerHeader = document.createElement('h3');
+                layerHeader.textContent = `Layer ${layer + 1} Allocation`;
+                visualization.appendChild(layerHeader);
+                
+                const nodesContainer = document.createElement('div');
+                nodesContainer.className = 'nodes-container';
+                
+                for (let nodeIdx = 0; nodeIdx < numNodes; nodeIdx++) {
+                    const node = document.createElement('div');
+                    node.className = 'node';
+                    node.innerHTML = `<h4>Node ${nodeIdx}</h4>`;
+                    
+                    const gpusContainer = document.createElement('div');
+                    gpusContainer.className = 'gpus';
+                    
+                    for (let gpuInNode = 0; gpuInNode < gpusPerNode; gpuInNode++) {
+                        const gpuIdx = nodeIdx * gpusPerNode + gpuInNode;
+                        const gpu = document.createElement('div');
+                        gpu.className = 'gpu';
+                        
+                        const gpuHeader = document.createElement('div');
+                        gpuHeader.className = 'gpu-header';
+                        
+                        const gpuTitle = document.createElement('h5');
+                        gpuTitle.textContent = `GPU ${gpuIdx}`;
+                        gpuHeader.appendChild(gpuTitle);
+                        
+                        gpu.appendChild(gpuHeader);
+                        
+                        const expertsOnGpu = [];
+                        let totalGpuLoad = 0;
+                        
+                        for (let expertIdx = 0; expertIdx < phy2log[layer].length; expertIdx++) {
+                            if (Math.floor(expertIdx / (phy2log[layer].length / data.num_gpus)) === gpuIdx) {
+                                const logicalExpertId = phy2log[layer][expertIdx];
+                                const expertWeight = weights[layer][logicalExpertId];
+                                totalGpuLoad += expertWeight;
+                                expertsOnGpu.push({
+                                    id: logicalExpertId,
+                                    weight: expertWeight
+                                });
+                            }
+                        }
+                        
+                        const gpuLoad = document.createElement('span');
+                        gpuLoad.className = 'gpu-load';
+                        gpuLoad.textContent = `Load: ${totalGpuLoad}`;
+                        gpuHeader.appendChild(gpuLoad);
+                        
+                        for (let i = 0; i < expertsOnGpu.length; i += 2) {
+                            const pairDiv = document.createElement('div');
+                            pairDiv.className = 'expert-pair';
+                            
+                            const expert1 = expertsOnGpu[i];
+                            const expertDiv1 = document.createElement('div');
+                            expertDiv1.className = 'expert';
+                            expertDiv1.style.backgroundColor = getRandomColor(expert1.id);
+                            expertDiv1.textContent = `${expert1.id}`;
+                            pairDiv.appendChild(expertDiv1);
+                            
+                            if (i + 1 < expertsOnGpu.length) {
+                                const expert2 = expertsOnGpu[i + 1];
+                                const expertDiv2 = document.createElement('div');
+                                expertDiv2.className = 'expert';
+                                expertDiv2.style.backgroundColor = getRandomColor(expert2.id);
+                                expertDiv2.textContent = `${expert2.id}`;
+                                pairDiv.appendChild(expertDiv2);
+                            } else {
+                                const emptyDiv = document.createElement('div');
+                                emptyDiv.className = 'expert';
+                                pairDiv.appendChild(emptyDiv);
+                            }
+                            
+                            gpu.appendChild(pairDiv);
+                        }
+                        
+                        gpusContainer.appendChild(gpu);
+                    }
+                    
+                    node.appendChild(gpusContainer);
+                    nodesContainer.appendChild(node);
+                }
+                
+                visualization.appendChild(nodesContainer);
+            }
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('num_experts').addEventListener('change', initializeWeightInputs);
+            initializeWeightInputs();
+        });
+    </script>
+</body>
+</html>
